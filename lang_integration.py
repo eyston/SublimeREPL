@@ -71,6 +71,63 @@ class ClojureAutoTelnetRepl(sublime_plugin.WindowCommand):
         self.window.run_command("repl_open", {"type":"telnet", "encoding":"utf8", "host":"localhost", "port":port,
                                 "external_id":"clojure", "syntax":"Packages/Clojure/Clojure.tmLanguage"})
 
+# most of this could be pulled into baseclass with the telnet repl
+class ClojureAutoNreplRepl(sublime_plugin.WindowCommand):
+    def is_running(self, port_str):
+        """Check if port is open on localhost"""
+        port = int(port_str)
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        res = s.connect_ex(("127.0.0.1", port))
+        s.close()
+        return res == 0
+
+    def choices(self):
+        choices = []
+        for folder in self.window.folders():
+            nrepl_file = os.path.join(folder, "target/repl-port")
+            try:
+                with open(nrepl_file) as f:
+                    data = f.read()
+                    if not data.isdigit():
+                        continue
+                    description = folder
+                    if self.is_running(data):
+                        description += " (active)"
+                    else:
+                        description += " (not responding)"
+                    choices.append([description, data])
+            except IOError as e:
+                pass  # just ignore it, no file or no access
+
+        return choices + [["Custom nrepl", "Pick your own nrepl port number to Lein REPL"]]
+
+    def run(self):
+        choices = self.choices()
+        if len(choices) == 1:
+            self.on_done(choices, 0)
+        else:
+            on_done = partial(self.on_done, choices)
+            self.window.show_quick_panel(self.choices(), on_done)
+
+    def on_done(self, choices, index):
+        if index == -1:
+            return
+        if index == len(choices) - 1:
+            self.window.show_input_panel("Enter nrepl port number", "",
+                                         self.open_nrepl_repl,
+                                         None, None)
+            return
+        self.open_nrepl_repl(choices[index][1])
+
+    def open_nrepl_repl(self, port_str):
+        try:
+            port = int(port_str)
+        except ValueError:
+            return
+
+        self.window.run_command("repl_open", {"type":"nrepl", "encoding":"utf8", "host":"localhost", "port":port,
+                                "external_id":"clojure", "syntax":"Packages/Clojure/Clojure.tmLanguage"})
+
 
 def scan_for_virtualenvs(venv_paths):
     bin_dir = "Scripts" if os.name == "nt" else "bin"
